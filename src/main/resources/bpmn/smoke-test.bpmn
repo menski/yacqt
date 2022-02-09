@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_0xu6a6y" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="4.11.1" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.1.0">
+  <bpmn:process id="smoke-test" name="Smoke Test" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1" name="Start">
+      <bpmn:outgoing>Flow_0iiuv2d</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_006e81p" messageRef="Message_2mc1204" />
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_0iiuv2d" sourceRef="StartEvent_1" targetRef="Activity_0v2vvc6" />
+    <bpmn:sequenceFlow id="Flow_1gv9x1h" sourceRef="Activity_0v2vvc6" targetRef="Event_1s0d3g6" />
+    <bpmn:manualTask id="Activity_0v2vvc6" name="Noop">
+      <bpmn:incoming>Flow_0iiuv2d</bpmn:incoming>
+      <bpmn:outgoing>Flow_1gv9x1h</bpmn:outgoing>
+    </bpmn:manualTask>
+    <bpmn:endEvent id="Event_1s0d3g6" name="End">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="finish-process" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1gv9x1h</bpmn:incoming>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_0xo9ywt" />
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:message id="Message_2mc1204" name="smoke-test" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="smoke-test">
+      <bpmndi:BPMNEdge id="Flow_0iiuv2d_di" bpmnElement="Flow_0iiuv2d">
+        <di:waypoint x="215" y="117" />
+        <di:waypoint x="270" y="117" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1gv9x1h_di" bpmnElement="Flow_1gv9x1h">
+        <di:waypoint x="370" y="117" />
+        <di:waypoint x="432" y="117" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Event_03lm9ll_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="179" y="99" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="185" y="142" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0a77quc_di" bpmnElement="Activity_0v2vvc6">
+        <dc:Bounds x="270" y="77" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0j3m38e_di" bpmnElement="Event_1s0d3g6">
+        <dc:Bounds x="432" y="99" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="440" y="142" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
