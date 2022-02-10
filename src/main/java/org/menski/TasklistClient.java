@@ -91,15 +91,15 @@ public class TasklistClient implements AutoCloseable {
   }
 
   private String requestToken() throws IOException {
-    ResponseBody response = executePostRequest(Configuration.getZeebeAuthorizationServerUrl(), TokenRequest.createTasklistTokenRequest());
-    TokenResponse tokenResponse = objectMapper.readValue(response.string(), TokenResponse.class);
+    String response = executePostRequest(Configuration.getZeebeAuthorizationServerUrl(), TokenRequest.createTasklistTokenRequest());
+    TokenResponse tokenResponse = objectMapper.readValue(response, TokenResponse.class);
     return tokenResponse.getAccessToken();
   }
 
   private <T> T executePostRequest(String url, Object body, TypeReference<GraphQlResponse<T>> typeReference) throws IOException {
-    ResponseBody responseBody = executePostRequest(url, body);
+    String response = executePostRequest(url, body);
 
-    GraphQlResponse<T> graphQlResponse = objectMapper.readValue(responseBody.string(), typeReference);
+    GraphQlResponse<T> graphQlResponse = objectMapper.readValue(response, typeReference);
 
     if (graphQlResponse.errors != null && !graphQlResponse.errors.isEmpty()) {
      graphQlResponse.errors.forEach(e -> LOG.error("Error while executing GraphQL request: {}", e.message()));
@@ -109,7 +109,7 @@ public class TasklistClient implements AutoCloseable {
   }
 
   @NotNull
-  private ResponseBody executePostRequest(String url, Object body) throws IOException {
+  private String executePostRequest(String url, Object body) throws IOException {
     String requestJson = objectMapper.writeValueAsString(body);
     RequestBody requestBody = RequestBody.create(requestJson, MediaType.parse("application/json"));
 
@@ -121,7 +121,7 @@ public class TasklistClient implements AutoCloseable {
 
     Request request = requestBuilder.build();
 
-    Response response = httpClient.newCall(request).execute();
+    try (Response response = httpClient.newCall(request).execute()) {
     ResponseBody responseBody = response.body();
 
     if (response.code() != 200 || responseBody == null) {
@@ -134,7 +134,8 @@ public class TasklistClient implements AutoCloseable {
       throw new IOException(
           String.format("Failed to execute post request (code: %d)", response.code()));
     }
-    return responseBody;
+      return responseBody.string();
+    }
   }
 
   @Override
