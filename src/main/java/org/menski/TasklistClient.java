@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
+import org.apache.maven.artifact.versioning.ComparableVersion;
+import org.jetbrains.annotations.NotNull;
 import org.menski.dto.TokenRequest;
 import org.menski.dto.TokenResponse;
 import org.slf4j.Logger;
@@ -46,21 +48,22 @@ public class TasklistClient implements AutoCloseable {
     bearerToken = requestToken();
   }
 
-  public List<Long> queryTasks() throws IOException {
-    GraphQlQuery query =
-        new GraphQlQuery("query ($assignee: String!) { tasks( query: { state: CREATED, assignee: $assignee, candidateGroup: $assignee} ) { id } }", Map.of("assignee", ASSIGNEE));
-    String response = executePostRequest(graphQlUrl, query);
-    QueryTasksResults result =
-        objectMapper.readValue(response, QUERY_TASKS_RESULT_TYPE_REFERENCE).data();
+  public List<Long> queryTasks(ComparableVersion gatewayVersion) throws IOException {
+    GraphQlQuery query;
+    if (gatewayVersion.compareTo(new ComparableVersion("1.3.0")) >= 0) {
+      query =new GraphQlQuery("query ($assignee: String!) { tasks( query: { state: CREATED, assignee: $assignee, candidateGroup: $assignee} ) { id } }", Map.of("assignee", ASSIGNEE));
+    }
+    else {
+      query =new GraphQlQuery("{ tasks( query: { state: CREATED} ) { id } }", Map.of());
+    }
+    QueryTasksResults result = executePostRequest(graphQlUrl, query, QUERY_TASKS_RESULT_TYPE_REFERENCE);
     return result != null ? result.tasks().stream().map(Task::id).map(Long::parseLong).collect(Collectors.toList()) : List.of();
   }
 
   public Task getTask(long taskId) throws IOException {
     GraphQlQuery query =
         new GraphQlQuery("query ($id: String!) { task(id: $id) { id } }", Map.of("id", taskId));
-    String response = executePostRequest(graphQlUrl, query);
-    GetTaskResult result =
-        objectMapper.readValue(response, GET_TASK_RESULT_TYPE_REFERENCE).data();
+    GetTaskResult result = executePostRequest(graphQlUrl, query, GET_TASK_RESULT_TYPE_REFERENCE);
     return result != null ? result.task() : null;
   }
 
@@ -71,10 +74,7 @@ public class TasklistClient implements AutoCloseable {
             "mutation ($taskId: String!, $assignee: String) { claimTask( taskId: $taskId, assignee: $assignee ) { id, assignee }}",
             Map.of("taskId", taskId, "assignee", ASSIGNEE));
 
-    String response = executePostRequest(graphQlUrl, query);
-
-    ClaimTaskResult result =
-        objectMapper.readValue(response, CLAIM_TASK_RESULT_TYPE_REFERENCE).data();
+    ClaimTaskResult result = executePostRequest(graphQlUrl, query, CLAIM_TASK_RESULT_TYPE_REFERENCE);
 
     return result != null && result.claimTask() != null && result.claimTask().assignee().equals(ASSIGNEE);
   }
@@ -85,24 +85,31 @@ public class TasklistClient implements AutoCloseable {
             "mutation ($taskId: String!) { completeTask( taskId: $taskId, variables: [] ) { id, taskState }}",
             Map.of("taskId", taskId));
 
-    String response = executePostRequest(graphQlUrl, query);
-
-    CompleteTaskResult result =
-        objectMapper.readValue(response, COMPLETE_TASK_RESULT_TYPE_REFERENCE).data();
+    CompleteTaskResult result = executePostRequest(graphQlUrl, query, COMPLETE_TASK_RESULT_TYPE_REFERENCE);
 
     return result != null && result.completeTask() != null && result.completeTask().taskState().equals("COMPLETED");
   }
 
   private String requestToken() throws IOException {
-    String response =
-        executePostRequest(
-            Configuration.getZeebeAuthorizationServerUrl(),
-            TokenRequest.createTasklistTokenRequest());
-    TokenResponse tokenResponse = objectMapper.readValue(response, TokenResponse.class);
+    ResponseBody response = executePostRequest(Configuration.getZeebeAuthorizationServerUrl(), TokenRequest.createTasklistTokenRequest());
+    TokenResponse tokenResponse = objectMapper.readValue(response.string(), TokenResponse.class);
     return tokenResponse.getAccessToken();
   }
 
-  private String executePostRequest(String url, Object body) throws IOException {
+  private <T> T executePostRequest(String url, Object body, TypeReference<GraphQlResponse<T>> typeReference) throws IOException {
+    ResponseBody responseBody = executePostRequest(url, body);
+
+    GraphQlResponse<T> graphQlResponse = objectMapper.readValue(responseBody.string(), typeReference);
+
+    if (graphQlResponse.errors != null && !graphQlResponse.errors.isEmpty()) {
+     graphQlResponse.errors.forEach(e -> LOG.error("Error while executing GraphQL request: {}", e.message()));
+    }
+
+    return graphQlResponse.data();
+  }
+
+  @NotNull
+  private ResponseBody executePostRequest(String url, Object body) throws IOException {
     String requestJson = objectMapper.writeValueAsString(body);
     RequestBody requestBody = RequestBody.create(requestJson, MediaType.parse("application/json"));
 
@@ -127,8 +134,7 @@ public class TasklistClient implements AutoCloseable {
       throw new IOException(
           String.format("Failed to execute post request (code: %d)", response.code()));
     }
-
-    return responseBody.string();
+    return responseBody;
   }
 
   @Override

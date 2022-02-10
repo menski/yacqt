@@ -3,9 +3,11 @@ package org.menski;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.camunda.zeebe.client.ZeebeClient;
+import io.camunda.zeebe.client.api.command.DeployProcessCommandStep1;
 import io.camunda.zeebe.client.api.response.DeploymentEvent;
 import io.camunda.zeebe.client.api.response.Topology;
 import io.camunda.zeebe.client.impl.oauth.OAuthCredentialsProviderBuilder;
+import org.apache.maven.artifact.versioning.ComparableVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,11 +26,13 @@ public class Yacqt {
   private final Set<Long> processInstanceKeys = new ConcurrentSkipListSet<>();
 
   private void run() {
-    try (ZeebeClient zeebeClient = createZeebeClient(); TasklistClient tasklistClient = new TasklistClient(objectMapper); Workers workers = new Workers(zeebeClient)) {
+    try (ZeebeClient zeebeClient = createZeebeClient();
+        TasklistClient tasklistClient = new TasklistClient(objectMapper);
+        Workers workers = new Workers(zeebeClient)) {
       // verify we can connect to the cluster
-      connectToCluster(zeebeClient);
+      ComparableVersion gatewayVersion = connectToCluster(zeebeClient);
 
-      deployProcesses(zeebeClient);
+      deployProcesses(zeebeClient, gatewayVersion);
 
       int instances = Configuration.getZeebeInstances();
       processInstanceKeys.add(startInstance(zeebeClient, "smoke-test", instances));
@@ -39,7 +43,7 @@ public class Yacqt {
 
       LOG.info("Waiting for process instances to finish");
       while (!processInstanceKeys.isEmpty()) {
-        completeUserTasks(tasklistClient);
+        completeUserTasks(tasklistClient, gatewayVersion);
       }
       LOG.info("All process instances finished");
     } catch (IOException e) {
@@ -55,30 +59,41 @@ public class Yacqt {
             "businessKeys",
             IntStream.range(0, instances).mapToObj(i -> UUID.randomUUID().toString()).toList());
 
-    long processInstanceKey = zeebeClient.newCreateInstanceCommand()
-        .bpmnProcessId("process-starter")
-        .latestVersion()
-        .variables(variableMap)
-        .send()
-        .join()
-        .getProcessInstanceKey();
+    long processInstanceKey =
+        zeebeClient
+            .newCreateInstanceCommand()
+            .bpmnProcessId("process-starter")
+            .latestVersion()
+            .variables(variableMap)
+            .send()
+            .join()
+            .getProcessInstanceKey();
 
-    LOG.info("Started process instance with key {} for process name {} with instances {}", processInstanceKey, processName, instances);
+    LOG.info(
+        "Started process instance with key {} for process name {} with instances {}",
+        processInstanceKey,
+        processName,
+        instances);
 
     return processInstanceKey;
   }
 
-  private void deployProcesses(ZeebeClient zeebeClient) {
+  private void deployProcesses(ZeebeClient zeebeClient, ComparableVersion gatewayVersion) {
     LOG.debug("Deploying processes to cluster");
-    DeploymentEvent deploymentEvent =
+    DeployProcessCommandStep1.DeployProcessCommandBuilderStep2 command =
         zeebeClient
             .newDeployCommand()
             .addResourceFromClasspath("bpmn/process-starter.bpmn")
             .addResourceFromClasspath("bpmn/smoke-test.bpmn")
-            .addResourceFromClasspath("bpmn/task-test.bpmn")
-            .addResourceFromClasspath("bpmn/timer-test.bpmn")
-            .send()
-            .join();
+            .addResourceFromClasspath("bpmn/timer-test.bpmn");
+
+    if (gatewayVersion.compareTo(new ComparableVersion("1.3.0")) >= 0) {
+      command.addResourceFromClasspath("bpmn/task-test-13.bpmn");
+    } else {
+      command.addResourceFromClasspath("bpmn/task-test.bpmn");
+    }
+
+    DeploymentEvent deploymentEvent = command.send().join();
 
     deploymentEvent
         .getProcesses()
@@ -106,8 +121,8 @@ public class Yacqt {
         .build();
   }
 
-  private void completeUserTasks(TasklistClient tasklistClient) throws IOException {
-    for (Long taskKey : tasklistClient.queryTasks()) {
+  private void completeUserTasks(TasklistClient tasklistClient, ComparableVersion gatewayVersion) throws IOException {
+    for (Long taskKey : tasklistClient.queryTasks(gatewayVersion)) {
       if (!tasklistClient.claimTask(taskKey)) {
         LOG.warn("Failed to assignee user task {}", taskKey);
       }
@@ -118,7 +133,8 @@ public class Yacqt {
     }
   }
 
-  private void connectToCluster(ZeebeClient zeebeClient) throws JsonProcessingException {
+  private ComparableVersion connectToCluster(ZeebeClient zeebeClient)
+      throws JsonProcessingException {
     LOG.debug(
         "Trying to connect to cluster {} with client id {}",
         Configuration.getZeebeAddress(),
@@ -127,6 +143,7 @@ public class Yacqt {
     String topologyString =
         objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(topology);
     LOG.info("Connected to cluster {}", topologyString);
+    return new ComparableVersion(topology.getGatewayVersion());
   }
 
   public static void main(String[] args) {

@@ -108,6 +108,7 @@
     <bpmn:userTask id="Activity_178bng5" name="User Task">
       <bpmn:extensionElements>
         <zeebe:formDefinition formKey="camunda-forms:bpmn:userTaskForm_0fn80n9" />
+        <zeebe:assignmentDefinition assignee="= &#34;yacqt&#34;" candidateGroups="= [&#34;yacqt&#34;]" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1ag5pbq</bpmn:incoming>
       <bpmn:outgoing>Flow_0ulh0ll</bpmn:outgoing>
